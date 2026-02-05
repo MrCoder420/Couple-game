@@ -1,69 +1,93 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User } from '../types';
-import { AuthService } from '../services/AuthService';
+import apiService from '@/services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+
+interface User {
+  id: string;
+  email: string;
+  displayName: string;
+}
 
 interface AuthContextType {
   user: User | null;
-  isLoading: boolean;
+  token: string | null;
+  loading: boolean;
   login: (email: string) => Promise<void>;
-  signup: (name: string, email: string) => Promise<void>;
-  logout: () => void;
-  switchUser: () => Promise<void>; // For testing
+  logout: () => Promise<void>;
+  isAuthenticated: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  token: null,
+  loading: true,
+  login: async () => { },
+  logout: async () => { },
+  isAuthenticated: false,
+});
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadStoredAuth();
+  }, []);
+
+  const loadStoredAuth = async () => {
+    try {
+      const storedToken = await AsyncStorage.getItem('authToken');
+      const storedUser = await AsyncStorage.getItem('user');
+
+      if (storedToken && storedUser) {
+        setToken(storedToken);
+        setUser(JSON.parse(storedUser));
+        apiService.setToken(storedToken);
+      }
+    } catch (error) {
+      console.error('Failed to load auth:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const login = async (email: string) => {
-    setIsLoading(true);
     try {
-      const loggedInUser = await AuthService.login(email);
-      setUser(loggedInUser);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoading(false);
+      const response = await apiService.login(email);
+
+      setUser(response.user);
+      setToken(response.token);
+
+      await AsyncStorage.setItem('authToken', response.token);
+      await AsyncStorage.setItem('user', JSON.stringify(response.user));
+    } catch (error) {
+      console.error('Login failed:', error);
+      throw error;
     }
   };
 
-  const signup = async (name: string, email: string) => {
-    setIsLoading(true);
-    try {
-      const newUser = await AuthService.signup(name, email);
-      setUser(newUser);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const logout = () => {
+  const logout = async () => {
     setUser(null);
+    setToken(null);
+    await AsyncStorage.removeItem('authToken');
+    await AsyncStorage.removeItem('user');
   };
-  
-  const switchUser = async () => {
-      if (!user) return;
-      setIsLoading(true);
-      // Toggle between user_1 and user_2
-      const nextId = user.id === 'user_1' ? 'user_2' : 'user_1';
-      const switchedUser = await AuthService.mockSwitchUser(nextId);
-      setUser(switchedUser);
-      setIsLoading(false);
-  }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, switchUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        loading,
+        login,
+        logout,
+        isAuthenticated: !!user && !!token,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
-}
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within an AuthProvider');
-  return context;
 };
+
+export const useAuth = () => useContext(AuthContext);

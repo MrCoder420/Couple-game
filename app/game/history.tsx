@@ -1,178 +1,273 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useGame } from '@/context/GameContext';
 import { useAuth } from '@/context/AuthContext';
+import { useGame } from '@/context/GameContext';
 import { Challenge, Penalty } from '@/types';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { AlertTriangle, CheckCircle, Clock, Inbox, Send, XCircle } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { X, ArrowRightLeft, AlertTriangle, CheckCircle, XCircle } from 'lucide-react-native';
+
+const { width } = Dimensions.get('window');
 
 const EventItem = ({ event, userId }: { event: Challenge | Penalty, userId: string }) => {
-    // Determine type: 'sent_challenge', 'received_challenge', 'penalty_loss', 'penalty_bonus'
     const isChallenge = 'cardId' in event;
-    
+
     if (isChallenge) {
         const c = event as Challenge;
         const isSender = c.senderId === userId;
-        const title = isSender ? 'You sent a challenge' : 'Partner sent a challenge';
-        const statusColor = c.status === 'accepted' ? '#59C3C3' : c.status === 'rejected' ? '#FF4D6D' : '#888';
-        const icon = c.status === 'accepted' ? <CheckCircle size={20} color={statusColor} /> 
-                  : c.status === 'rejected' ? <XCircle size={20} color={statusColor} /> 
-                  : <AlertTriangle size={20} color={statusColor} />;
+        const statusColor = c.status === 'accepted' ? '#4CAF50' : c.status === 'rejected' ? '#EF4444' : '#FFB74D';
+        let StatusIcon = Clock;
+        if (c.status === 'accepted') StatusIcon = CheckCircle;
+        else if (c.status === 'rejected') StatusIcon = XCircle;
 
         return (
-            <View style={styles.item}>
-                <View style={[styles.iconBox, { borderColor: statusColor }]}>
-                    {icon}
+            <LinearGradient
+                colors={['#2A1A2E', '#1A101F']}
+                style={styles.item}
+            >
+                <View style={styles.itemHeader}>
+                    <View style={[styles.statusBadge, { backgroundColor: `${statusColor}20`, borderColor: `${statusColor}40` }]}>
+                        <StatusIcon size={12} color={statusColor} />
+                        <Text style={[styles.statusText, { color: statusColor }]}>{c.status.toUpperCase()}</Text>
+                    </View>
+                    <Text style={styles.date}>{new Date(c.sentAt).toLocaleDateString()}</Text>
                 </View>
-                <View style={styles.content}>
-                    <Text style={styles.title}>{title}</Text>
-                    <Text style={styles.desc}>"{c.cardContent}"</Text>
-                    <Text style={[styles.date, { color: statusColor }]}>{c.status.toUpperCase()}</Text>
+
+                <Text style={styles.cardContent}>"{c.cardContent}"</Text>
+
+                <View style={styles.itemFooter}>
+                    <Text style={styles.recipientText}>
+                        {isSender ? 'To Partner' : 'From Partner'} • {new Date(c.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
                 </View>
-                <Text style={styles.time}>{new Date(c.sentAt).toLocaleDateString()}</Text>
-            </View>
+            </LinearGradient>
         );
     } else {
         const p = event as Penalty;
-        // Penalty logic: 'lose_card' or 'partner_bonus'
-        // If I am target and lose_card -> I Lost Card
-        // If I am target and bonus -> I got Bonus? No, penalty target suffers.
-        // Wait, Penalty A: Partner loses unused card. Penalty B: Sender gets bonus.
-        // Penalty object: targetUserId usually means who gets the BAD effect? 
-        // Or who was the 'Partner' that rejected?
-        // Let's assume description handles it for now.
-        
         return (
-            <View style={[styles.item, styles.penaltyItem]}>
-                <View style={styles.iconBoxPenalty}>
-                    <AlertTriangle size={20} color="#FF9F1C" />
+            <LinearGradient
+                colors={['#2A1A2E', '#1A101F']}
+                style={[styles.item, styles.penaltyItem]}
+            >
+                <View style={styles.itemHeader}>
+                    <View style={[styles.statusBadge, { backgroundColor: 'rgba(245, 158, 11, 0.2)', borderColor: '#F59E0B' }]}>
+                        <AlertTriangle size={12} color="#F59E0B" />
+                        <Text style={[styles.statusText, { color: '#F59E0B' }]}>PENALTY</Text>
+                    </View>
+                    <Text style={styles.date}>{new Date(p.appliedAt).toLocaleDateString()}</Text>
                 </View>
-                <View style={styles.content}>
-                    <Text style={styles.titlePenalty}>PENALTY APPLIED</Text>
-                    <Text style={styles.desc}>{p.description}</Text>
-                </View>
-                <Text style={styles.time}>{new Date(p.appliedAt).toLocaleDateString()}</Text>
-            </View>
+                <Text style={styles.cardContent}>{p.description}</Text>
+            </LinearGradient>
         );
     }
 };
 
 export default function History() {
-  const { events } = useGame();
-  const { user } = useAuth();
-  const router = useRouter();
+    const { events } = useGame();
+    const { user } = useAuth();
+    const router = useRouter();
+    const [activeTab, setActiveTab] = useState<'received' | 'sent'>('received');
 
-  if (!user) return null;
+    if (!user) return null;
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-          <Text style={styles.headerTitle}>Game History</Text>
-          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
-              <X size={24} color="#FFF" />
-          </TouchableOpacity>
-      </View>
+    const challenges = events.filter(e => 'cardId' in e) as Challenge[];
+    const penalties = events.filter(e => !('cardId' in e)) as Penalty[];
 
-      <FlatList
-        data={events}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.list}
-        renderItem={({ item }) => <EventItem event={item} userId={user.id} />}
-        ListEmptyComponent={
-            <Text style={styles.emptyText}>No events yet. Start playing!</Text>
-        }
-      />
-    </SafeAreaView>
-  );
+    const displayedEvents = activeTab === 'sent'
+        ? challenges.filter(c => c.senderId === user.id)
+        : challenges.filter(c => c.senderId !== user.id);
+
+    const finalEvents: (Challenge | Penalty)[] = [...displayedEvents];
+    if (activeTab === 'received') {
+        finalEvents.push(...penalties);
+    }
+
+    const getTime = (item: Challenge | Penalty) => {
+        if ('sentAt' in item) return new Date((item as Challenge).sentAt).getTime();
+        return new Date((item as Penalty).appliedAt).getTime();
+    };
+
+    const listData = finalEvents.sort((a, b) => getTime(b) - getTime(a));
+
+    return (
+        <LinearGradient
+            colors={['#0F0F1E', '#1A101F']}
+            style={styles.container}
+        >
+            <SafeAreaView style={styles.safeArea} edges={['top']}>
+                <View style={styles.header}>
+                    <Text style={styles.headerTitle}>History</Text>
+                </View>
+
+                <View style={styles.tabContainer}>
+                    <TouchableOpacity
+                        style={[styles.tab, activeTab === 'received' && styles.activeTab]}
+                        onPress={() => setActiveTab('received')}
+                    >
+                        <Inbox size={18} color={activeTab === 'received' ? '#fff' : '#888'} />
+                        <Text style={[styles.tabText, activeTab === 'received' && styles.activeTabText]}>Received</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.tab, activeTab === 'sent' && styles.activeTab]}
+                        onPress={() => setActiveTab('sent')}
+                    >
+                        <Send size={18} color={activeTab === 'sent' ? '#fff' : '#888'} />
+                        <Text style={[styles.tabText, activeTab === 'sent' && styles.activeTabText]}>Sent</Text>
+                    </TouchableOpacity>
+                </View>
+
+                <FlatList
+                    data={listData}
+                    keyExtractor={item => item.id}
+                    contentContainerStyle={styles.list}
+                    showsVerticalScrollIndicator={false}
+                    renderItem={({ item }) => <EventItem event={item} userId={user.id} />}
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <LinearGradient
+                                colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)']}
+                                style={styles.emptyIconBg}
+                            >
+                                {activeTab === 'sent' ? <Send size={32} color="#888" /> : <Inbox size={32} color="#888" />}
+                            </LinearGradient>
+                            <Text style={styles.emptyText}>
+                                {activeTab === 'sent' ? "No sent challenges" : "No received challenges"}
+                            </Text>
+                            <Text style={styles.emptySubtext}>
+                                {activeTab === 'sent' ? "Start a challenge from the Deck!" : "Your history will appear here."}
+                            </Text>
+                        </View>
+                    }
+                />
+            </SafeAreaView>
+        </LinearGradient>
+    );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0F0F0F',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E1E1E',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  closeBtn: {
-      padding: 8,
-      backgroundColor: '#333',
-      borderRadius: 20,
-  },
-  list: {
-      padding: 24,
-  },
-  item: {
-      flexDirection: 'row',
-      marginBottom: 24,
-      alignItems: 'flex-start',
-  },
-  penaltyItem: {
-      opacity: 0.9,
-  },
-  iconBox: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      borderWidth: 2,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 16,
-      backgroundColor: '#1A1A1A',
-  },
-  iconBoxPenalty: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: 'rgba(255, 159, 28, 0.2)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 16,
-      borderWidth: 1,
-      borderColor: '#FF9F1C',
-  },
-  content: {
-      flex: 1,
-  },
-  title: {
-      color: '#FFF',
-      fontWeight: 'bold',
-      marginBottom: 4,
-  },
-  titlePenalty: {
-      color: '#FF9F1C',
-      fontWeight: 'bold',
-      marginBottom: 4,
-  },
-  desc: {
-      color: '#CCC',
-      fontSize: 14,
-      lineHeight: 20,
-      marginBottom: 4,
-  },
-  date: {
-      fontSize: 12,
-      fontWeight: 'bold',
-  },
-  time: {
-      color: '#666',
-      fontSize: 12,
-      marginLeft: 8,
-  },
-  emptyText: {
-      color: '#666',
-      textAlign: 'center',
-      marginTop: 48,
-  }
+    container: {
+        flex: 1,
+    },
+    safeArea: {
+        flex: 1,
+    },
+    header: {
+        padding: 24,
+        paddingBottom: 16,
+    },
+    headerTitle: {
+        fontSize: 32,
+        fontWeight: 'bold',
+        color: '#fff',
+    },
+    tabContainer: {
+        flexDirection: 'row',
+        paddingHorizontal: 24,
+        paddingBottom: 24,
+        gap: 12,
+    },
+    tab: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        gap: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    activeTab: {
+        backgroundColor: 'rgba(255, 75, 110, 0.15)',
+        borderColor: '#FF4B6E',
+    },
+    tabText: {
+        color: '#888',
+        fontWeight: '600',
+        fontSize: 14,
+    },
+    activeTabText: {
+        color: '#fff',
+    },
+    list: {
+        padding: 24,
+        paddingTop: 0,
+        paddingBottom: 40,
+    },
+    item: {
+        padding: 20,
+        borderRadius: 20,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 75, 110, 0.2)',
+    },
+    itemHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    statusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 12,
+        gap: 6,
+        borderWidth: 1,
+    },
+    statusText: {
+        fontSize: 10,
+        fontWeight: '800',
+        letterSpacing: 0.5,
+    },
+    date: {
+        color: 'rgba(255,255,255,0.4)',
+        fontSize: 12,
+        fontWeight: '500',
+    },
+    cardContent: {
+        color: '#fff',
+        fontSize: 18,
+        lineHeight: 26,
+        fontWeight: '500',
+        marginBottom: 12,
+    },
+    itemFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    recipientText: {
+        color: 'rgba(255,255,255,0.4)',
+        fontSize: 12,
+    },
+    penaltyItem: {
+        borderColor: 'rgba(245, 158, 11, 0.3)',
+    },
+    emptyContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingTop: 80,
+    },
+    emptyIconBg: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 24,
+    },
+    emptyText: {
+        color: '#fff',
+        fontSize: 20,
+        fontWeight: 'bold',
+        marginBottom: 8,
+    },
+    emptySubtext: {
+        color: '#888',
+        fontSize: 14,
+        textAlign: 'center',
+    },
 });

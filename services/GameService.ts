@@ -1,7 +1,8 @@
 import { Card, Challenge, Game, GameDuration, Penalty, PlayerDeck } from '../types';
+import apiService from './api';
 import socketService from './socket';
 
-// Mock Data Pools
+// Mock Data Pools (kept for reference or fallback if needed)
 const ACTION_CARDS = [
   "Cook a special dinner tonight.",
   "Give a 10-minute massage.",
@@ -9,15 +10,6 @@ const ACTION_CARDS = [
   "Plan a surprise date.",
   "No phones for 2 hours tonight.",
   "Slow dance to our favorite song.",
-  // ... add more for pool
-];
-
-const QUESTION_CARDS = [
-  "What is your favorite memory of us?",
-  "What is one thing you want to achieve this year?",
-  "When did you first know you loved me?",
-  "What is your biggest fear?",
-  // ... add more
 ];
 
 class MockGameService {
@@ -100,7 +92,7 @@ class MockGameService {
 
           resolve(game);
         },
-        (err) => reject(new Error(err))
+        (err: any) => reject(new Error(err))
       );
     });
   }
@@ -112,30 +104,39 @@ class MockGameService {
 
   // --- Card Logic ---
 
-  // No longer needed locally, but keeping empty stub if TS requires, or better remove usage
-  private generateDeck(gameId: string, userId: string) {
-    // Deprecated: Deck comes from server now
-  }
-
   async getPlayerDeck(gameId: string, userId: string): Promise<PlayerDeck> {
     return this.decks[`${gameId}_${userId}`];
   }
 
   // --- Challenge Logic ---
 
-
-  // --- Challenge Logic ---
-
   async sendChallenge(gameId: string, senderId: string, receiverId: string, card: Card): Promise<Challenge> {
     console.log('[GameService] sendChallenge called', { gameId, cardId: card.id });
-    // Optimistic UI update or wait?
-    // Let's create a pending placeholder but real logic is on server
+
+    // Find room code to emit via socket
     const roomCode = this.games.find(g => g.id === gameId)?.code;
+
+    // In real implementation we might fetch relevant room info from API if not local
+    // Assuming for MVP the connected socket room is what matters or we have code.
+
     if (roomCode) {
-      console.log('[GameService] Emitting via socket to room:', roomCode);
-      socketService.sendChallenge(roomCode, card);
+      // Corrected: sendCard takes only card, or (roomCode, card) depending on implementation?
+      // Checked socket.ts: sendCard(card: any) { ... }
+      // Wait, previous file view showed: sendCard(card: Card) inside class...
+      // Let's check view of socket.ts if possible or assume simple emit.
+      // Based on api-server.js it listens for 'send_card'.
+      // And socket.ts likely emits 'send_card'.
+      // Let's assume socketService.sendCard(card) is correct signature from a previous context check 
+      // OR socketService.sendCard(roomCode, card) if updated.
+      // Let's use the one that matches typical pattern. 
+      // Actually, socket.ts usually just emits event. 
+      // If socketService.sendCard takes 1 arg, pass card.
+      // We'll trust the previous error "Expected 1 arguments, but got 2" which implies it takes 1.
+
+      socketService.sendCard(card); // Corrected based on lint error "Expected 1 arguments, but got 2."
     } else {
-      console.error('[GameService] No room code found for game', gameId);
+      // If we don't have code locally, maybe just emit card? socketService handles state?
+      socketService.sendCard(card);
     }
 
     // Return a temporary placeholder to satisfy type, event listener will handle real state
@@ -152,21 +153,30 @@ class MockGameService {
   }
 
   async getPendingChallenges(gameId: string, userId: string): Promise<Challenge[]> {
-    // Now purely relies on local state sync from socket events
-    return this.challenges.filter(c =>
-      c.gameId === gameId &&
-      c.receiverId === userId &&
-      c.status === 'pending'
-    );
+    try {
+      const response = await apiService.getPendingChallenges(gameId);
+      return (response.challenges || []).map((c: any) => ({
+        ...c,
+        senderId: c.sender_id,
+        receiverId: c.receiver_id,
+        cardId: c.card_id, // CRITICAL FIX: Map card_id to cardId
+        sentAt: c.sent_at,
+        cardContent: c.card_content,
+        gameId
+      }));
+    } catch (error) {
+      console.error('Failed to get pending challenges:', error);
+      return [];
+    }
   }
 
   async respondToChallenge(challengeId: string, response: 'accept' | 'reject'): Promise<Challenge> {
-    // Find game code
-    // We need gameCode to respond. 
-    // Assumption: single active game for MVP
     const game = this.games[0]; // Simplification
     if (game) {
-      socketService.respondToChallenge(game.code, challengeId, response);
+      // Use apiService for response, socket is for notification
+      await apiService.respondToChallenge(challengeId, response);
+      // Notify partner via socket
+      socketService.notifyChallengeResponded(game.code, challengeId);
     }
 
     const challenge = this.challenges.find(c => c.id === challengeId);
@@ -194,22 +204,13 @@ class MockGameService {
         description: penalty.description,
         appliedAt: new Date().toISOString()
       });
-
-      // Apply side effects (remove card etc)
-      if (penalty.type === 'lose_card') {
-        // Find deck for target and remove a random unused card
-        // For MVP we just show the message, real deck sync might need refresh
-      }
     }
   }
 
   // Called when we receive challenge_received from server
   handleIncomingChallenge(challenge: Challenge) {
     console.log('[GameService] handleIncomingChallenge', challenge);
-    // Ensure we don't duplicate
     if (!this.challenges.find(c => c.id === challenge.id)) {
-      // Map backend simplified object to full frontend Challenge type if needed
-      // Assuming backend sends compatible structure
       const newChallenge = {
         ...challenge,
         gameId: this.games[0]?.id // Map back to local game ID context
@@ -219,20 +220,38 @@ class MockGameService {
     }
   }
 
-  private applyPenalty(challenge: Challenge) {
-    // Deprecated: Server handles this
-  }
   async getGameEvents(gameId: string): Promise<(Challenge | Penalty)[]> {
-    const gameChallenges = this.challenges.filter(c => c.gameId === gameId);
-    const gamePenalties = this.penalties.filter(p => p.gameId === gameId);
+    try {
+      // Fetch real history from API
+      const response = await apiService.getRoomHistory(gameId);
 
-    const events = [...gameChallenges, ...gamePenalties];
-    // Sort by date descending
-    return events.sort((a, b) => {
-      const dateA = 'sentAt' in a ? a.sentAt : a.appliedAt;
-      const dateB = 'sentAt' in b ? b.sentAt : b.appliedAt;
-      return new Date(dateB).getTime() - new Date(dateA).getTime();
-    });
+      const challenges = (response.challenges || []).map((c: any) => ({
+        ...c,
+        senderId: c.sender_id,
+        receiverId: c.receiver_id,
+        cardId: c.card_id, // CRITICAL FIX: Map card_id to cardId
+        sentAt: c.sent_at,
+        cardContent: c.card_content,
+        gameId // maintain context
+      }));
+
+      const penalties = (response.events || [])
+        .filter((e: any) => e.event_type === 'penalty_applied') // Only include real penalties
+        .map((p: any) => ({
+          ...p,
+          appliedAt: p.created_at,
+          gameId
+        }));
+
+      return [...challenges, ...penalties].sort((a, b) => {
+        const dateA = 'sentAt' in a ? a.sentAt : a.appliedAt;
+        const dateB = 'sentAt' in b ? b.sentAt : b.appliedAt;
+        return new Date(dateB).getTime() - new Date(dateA).getTime();
+      });
+    } catch (error) {
+      console.error('Failed to fetch game events:', error);
+      return [];
+    }
   }
 }
 

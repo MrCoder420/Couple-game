@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import { useRouter, Link } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
+import { Link, useRouter } from 'expo-router';
 import { UserPlus } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function Signup() {
@@ -17,7 +17,7 @@ export default function Signup() {
       return;
     }
     await signup(name, email);
-    router.replace('/home');
+    router.replace('/game');
   };
 
   return (
@@ -30,7 +30,7 @@ export default function Signup() {
         </View>
 
         <View style={styles.form}>
-            <Text style={styles.label}>Your Name</Text>
+          <Text style={styles.label}>Your Name</Text>
           <TextInput
             style={styles.input}
             placeholder="Enter your name"
@@ -51,8 +51,8 @@ export default function Signup() {
             keyboardType="email-address"
           />
 
-          <TouchableOpacity 
-            style={[styles.button, isLoading && styles.buttonDisabled]} 
+          <TouchableOpacity
+            style={[styles.button, isLoading && styles.buttonDisabled]}
             onPress={handleSignup}
             disabled={isLoading}
           >

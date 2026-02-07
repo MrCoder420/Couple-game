@@ -2,8 +2,8 @@ import { Platform } from 'react-native';
 import { io, Socket } from 'socket.io-client';
 
 const SOCKET_URL = Platform.OS === 'web'
-    ? 'http://localhost:3000'
-    : 'http://10.132.48.193:3000';
+    ? 'http://13.53.129.22'
+    : 'http://13.53.129.22';
 
 class SocketService {
     public socket: Socket | null = null;
@@ -53,6 +53,16 @@ class SocketService {
         this.socket?.on('partner_online', callback);
     }
 
+    // Listen for player joined (room updates)
+    onPlayerJoined(callback: (data: { playerCount: number }) => void) {
+        this.socket?.on('player_joined', callback);
+    }
+
+    // Listen for game ready (both players present)
+    onGameReady(callback: () => void) {
+        this.socket?.on('game_ready', callback);
+    }
+
     // Listen for incoming challenges
     onChallengeReceived(callback: (challenge: any) => void) {
         this.socket?.on('challenge_received', callback);
@@ -79,6 +89,33 @@ class SocketService {
             return;
         }
         this.socket?.emit('challenge_responded', { roomId, challengeId });
+    }
+
+    // Send card to partner
+    sendCard(card: any) {
+        if (!this.authenticated) {
+            console.warn('Socket not authenticated');
+            return;
+        }
+        this.socket?.emit('send_card', card);
+    }
+
+    // Listen for incoming cards
+    onCardReceived(callback: (card: any) => void) {
+        this.socket?.on('receive_card', callback);
+    }
+
+    // Register push token
+    registerPushToken(token: string) {
+        if (!this.authenticated) {
+            // If not authenticated yet, we can't associate token with user easily
+            // But we can emit it and server can handle if it knows socket.id
+            // Better to wait for auth, but for now:
+            console.log('Registering push token:', token);
+            this.socket?.emit('register_push_token', { token });
+        } else {
+            this.socket?.emit('register_push_token', { token });
+        }
     }
 }
 

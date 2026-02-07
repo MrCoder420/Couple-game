@@ -1,9 +1,9 @@
 import axios from 'axios';
-import { Platform } from 'react-native';
 
-const API_URL = Platform.OS === 'web'
-    ? 'http://localhost:3000/api'
-    : 'http://10.132.48.193:3000/api';
+const API_URL = 'http://13.53.129.22/api';
+// const API_URL = Platform.OS === 'web'
+//     ? 'http://127.0.0.1:3000/api'
+//     : 'http://10.94.159.181:3000/api';
 
 class ApiService {
     private token: string | null = null;

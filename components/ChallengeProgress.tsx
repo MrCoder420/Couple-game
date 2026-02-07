@@ -1,7 +1,6 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient as SVGLinearGradient, Stop } from 'react-native-svg';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -37,24 +36,26 @@ export default function ChallengeProgress({ currentDay, totalDays, isActive }: C
         }
     }, [isActive]);
 
-    const size = 180;
-    const strokeWidth = 12;
+    const size = 200; // Increased size slightly for better visibility
+    const strokeWidth = 15;
     const radius = (size - strokeWidth) / 2;
     const circumference = radius * 2 * Math.PI;
     const strokeDashoffset = circumference - (progress * circumference);
 
     return (
         <Animated.View style={[styles.container, { transform: [{ scale: pulseAnim }] }]}>
-            <LinearGradient
-                colors={['#8B5CF6', '#EC4899']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.gradient}
-            >
+            <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
                 <Svg width={size} height={size} style={styles.svg}>
+                    <Defs>
+                        <SVGLinearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <Stop offset="0" stopColor="#8B5CF6" />
+                            <Stop offset="100%" stopColor="#EC4899" />
+                        </SVGLinearGradient>
+                    </Defs>
+
                     {/* Background circle */}
                     <Circle
-                        stroke="rgba(255, 255, 255, 0.1)"
+                        stroke="rgba(255, 255, 255, 0.15)"
                         fill="none"
                         cx={size / 2}
                         cy={size / 2}
@@ -63,7 +64,7 @@ export default function ChallengeProgress({ currentDay, totalDays, isActive }: C
                     />
                     {/* Progress circle */}
                     <Circle
-                        stroke="url(#grad)"
+                        stroke="url(#grad)" // Now references the Defs above
                         fill="none"
                         cx={size / 2}
                         cy={size / 2}
@@ -82,7 +83,7 @@ export default function ChallengeProgress({ currentDay, totalDays, isActive }: C
                     <Text style={styles.totalText}>of {totalDays}</Text>
                     <Text style={styles.percentageText}>{percentage}%</Text>
                 </View>
-            </LinearGradient>
+            </View>
         </Animated.View>
     );
 }
@@ -92,12 +93,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    gradient: {
-        borderRadius: 100,
-        padding: 4,
-    },
     svg: {
         position: 'absolute',
+        top: 0,
+        left: 0,
     },
     textContainer: {
         alignItems: 'center',
